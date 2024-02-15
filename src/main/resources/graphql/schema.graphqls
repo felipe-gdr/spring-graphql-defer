@@ -1,3 +1,5 @@
+directive @defer(if: Boolean, label: String) on FRAGMENT_SPREAD | INLINE_FRAGMENT
+
 type Query {
     bookById(id: ID): Book
 }
