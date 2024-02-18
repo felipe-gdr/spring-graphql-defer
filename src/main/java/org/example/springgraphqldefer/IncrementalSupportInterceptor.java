@@ -1,4 +1,4 @@
-package org.example.springgraphqlexperiments;
+package org.example.springgraphqldefer;
 
 import graphql.ExperimentalApi;
 import org.springframework.graphql.server.WebGraphQlInterceptor;

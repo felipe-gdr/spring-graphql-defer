@@ -1,4 +1,4 @@
-package org.example.springgraphqlexperiments;
+package org.example.springgraphqldefer;
 
 import org.springframework.context.annotation.Configuration;
 import org.springframework.web.reactive.config.CorsRegistry;

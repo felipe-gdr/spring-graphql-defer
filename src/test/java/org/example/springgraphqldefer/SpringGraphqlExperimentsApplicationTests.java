@@ -1,4 +1,4 @@
-package org.example.springgraphqlexperiments;
+package org.example.springgraphqldefer;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;

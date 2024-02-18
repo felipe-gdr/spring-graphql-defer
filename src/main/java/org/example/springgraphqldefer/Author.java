@@ -1,4 +1,4 @@
-package org.example.springgraphqlexperiments;
+package org.example.springgraphqldefer;
 
 import java.util.Arrays;
 import java.util.List;

@@ -1,4 +1,4 @@
-package org.example.springgraphqlexperiments;
+package org.example.springgraphqldefer;
 
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
