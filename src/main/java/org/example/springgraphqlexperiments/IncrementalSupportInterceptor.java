@@ -10,11 +10,12 @@ import reactor.core.publisher.Mono;
 import java.util.Collections;
 
 @Component
-public class HeaderInterceptor implements WebGraphQlInterceptor {
+public class IncrementalSupportInterceptor implements WebGraphQlInterceptor {
 
     @Override
     public Mono<WebGraphQlResponse> intercept(WebGraphQlRequest request, Chain chain) {
         request.configureExecutionInput((executionInput, builder) ->
+                // Enable incremental support in graphql-java execution
                 builder.graphQLContext(Collections.singletonMap(ExperimentalApi.ENABLE_INCREMENTAL_SUPPORT, true)
                 ).build());
 

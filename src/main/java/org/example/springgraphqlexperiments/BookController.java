@@ -15,13 +15,11 @@ public class BookController {
     @QueryMapping
     public CompletableFuture<Book> bookById(@Argument String id) {
         return CompletableFuture.supplyAsync(() -> {
-            long sleepTime = id.equals("book-1") ? 1000 : 2000;
-
-            logger.info("Fetching book: " + id);
+            // Different sleep times for different book items just to create
+            // some interval between the resolution of fields.
+            long sleepTime = id.equals("book-1") ? 100 : 800;
 
             sleep(sleepTime);
-
-            logger.info("Fetched book: " + id);
 
             return Book.getById(id);
         });
@@ -30,11 +28,7 @@ public class BookController {
     @SchemaMapping
     public CompletableFuture<Author> author(Book book) {
         return CompletableFuture.supplyAsync(() -> {
-            logger.info("Fetching author: " + book.authorId());
-
-            sleep(1000);
-
-            logger.info("Fetched author for: " + book.authorId());
+            sleep(500);
 
             return Author.getById(book.authorId());
         });

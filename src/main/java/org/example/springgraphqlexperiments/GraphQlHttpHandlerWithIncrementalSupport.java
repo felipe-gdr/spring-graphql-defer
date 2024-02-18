@@ -1,19 +1,3 @@
-/*
- * Copyright 2020-2023 the original author or authors.
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *      https://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
-
 package org.example.springgraphqlexperiments;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -26,7 +10,6 @@ import org.reactivestreams.Publisher;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.graphql.server.WebGraphQlHandler;
 import org.springframework.graphql.server.WebGraphQlRequest;
-import org.springframework.graphql.server.WebGraphQlResponse;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
 import org.springframework.util.Assert;
@@ -39,7 +22,13 @@ import java.nio.charset.Charset;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
+/**
+ * This class is a blatant copy of {@link org.springframework.graphql.server.webflux.GraphQlHttpHandler} with some modifications that allow us to process an {@link IncrementalExecutionResult}.
+ *
+ * @see org.springframework.graphql.server.webflux.GraphQlHttpHandler
+ */
 @Component
 public class GraphQlHttpHandlerWithIncrementalSupport {
     private static final ObjectMapper objectMapper = new ObjectMapper();
@@ -100,65 +89,13 @@ public class GraphQlHttpHandlerWithIncrementalSupport {
                     ServerResponse.BodyBuilder builder = ServerResponse.ok();
 
                     if (isIncremental) {
-                        return handleIncrementalResult(response);
+                        return handleIncrementalResult((IncrementalExecutionResult) response.getExecutionResult());
                     } else {
                         builder.headers(headers -> headers.putAll(response.getResponseHeaders()));
                         builder.contentType(selectResponseMediaType(serverRequest));
                         return builder.bodyValue(response.toMap());
                     }
                 });
-    }
-
-    private class Chunk {
-
-    }
-
-    private static final String BOUNDARY_CHAR = "-";
-    private static final String CHUNK_BOUNDARY = "-" + BOUNDARY_CHAR + "-";
-    private static final String TERMINATION_BOUNDARY = "--" + BOUNDARY_CHAR + "--";
-    private static final String LINE_BREAK = "\n";
-    private static final String CHUNK_HEADERS = "Content-Type: application/json; charset=" + Charset.defaultCharset();
-
-
-    private static Mono<ServerResponse> handleIncrementalResult(WebGraphQlResponse response) {
-        IncrementalExecutionResult incrementalExecutionResult = (IncrementalExecutionResult) response.getExecutionResult();
-
-        Publisher<String> initialResponse = Flux.just(incrementalExecutionResult.toSpecification())
-                .flatMap(GraphQlHttpHandlerWithIncrementalSupport::createChunk);
-
-        Publisher<String> delayedResponses = Flux.from(incrementalExecutionResult.getIncrementalItemPublisher())
-                .map(DelayedIncrementalPartialResult::toSpecification)
-                .flatMap(GraphQlHttpHandlerWithIncrementalSupport::createChunk);
-
-        Publisher<String> terminationPublisher = Flux.just(TERMINATION_BOUNDARY);
-
-        Publisher<String> resultPublisher = Flux.mergeSequential(initialResponse, delayedResponses, terminationPublisher);
-
-        return ServerResponse.ok()
-                .header("Content-Type", "multipart/mixed; boundary=\"" + BOUNDARY_CHAR + "\"")
-                .header("Transfer-Encoding", "chunked")
-                .header("Connection", "keep-alive")
-                .header("Keep-Alive", "timeout=5")
-                .body(resultPublisher, String.class);
-    }
-
-    private static Mono<String> createChunk(Map<String, Object> data) {
-        final String dataString;
-        try {
-            dataString = objectMapper.writeValueAsString(data);
-        } catch (JsonProcessingException e) {
-            return Mono.error(e);
-        }
-
-        String stringBuilder = CHUNK_BOUNDARY +
-                LINE_BREAK +
-                CHUNK_HEADERS +
-                LINE_BREAK +
-                LINE_BREAK +
-                dataString +
-                LINE_BREAK;
-
-        return Mono.just(stringBuilder);
     }
 
     private static MediaType selectResponseMediaType(ServerRequest serverRequest) {
@@ -168,6 +105,94 @@ public class GraphQlHttpHandlerWithIncrementalSupport {
             }
         }
         return MediaType.APPLICATION_JSON;
+    }
+
+    // ***** Everything under here is code written to support incremental results ***** //
+    private static final String BOUNDARY_CHARACTERS = "-";
+    private static final String CHUNK_BOUNDARY = "-" + BOUNDARY_CHARACTERS + "-";
+    private static final String TERMINATION_BOUNDARY = "--" + BOUNDARY_CHARACTERS + "--";
+    private static final String LINE_BREAK = "\r\n";
+    private static final String CHUNK_HEADERS = "content-type: application/json; charset=" + Charset.defaultCharset();
+
+
+    /**
+     * Converts a {@link IncrementalExecutionResult} from graphql-java into a {@link ServerResponse} that can deliver incremental chunks of data.
+     * <p>
+     * <a href="https://github.com/graphql/graphql-over-http/blob/main/rfcs/IncrementalDelivery.md">HTTP spec for incremental delivery<a>
+     *
+     * @param incrementalExecutionResult the result of executing a GraphQL operation with incremental data
+     *
+     * @return a ServerResponse that is able to deliver incremental data following the graphql-over-http specification.
+     */
+    private static Mono<ServerResponse> handleIncrementalResult(IncrementalExecutionResult incrementalExecutionResult) {
+        Publisher<String> firstBoundayPublisher = Flux.just(CHUNK_BOUNDARY);
+
+        Publisher<String> initialResponse = Flux.just(incrementalExecutionResult.toSpecification())
+                .flatMap(GraphQlHttpHandlerWithIncrementalSupport::createChunk);
+
+        Publisher<String> delayedResponses = Flux.from(incrementalExecutionResult.getIncrementalItemPublisher())
+                .map(DelayedIncrementalPartialResult::toSpecification)
+                .flatMap(GraphQlHttpHandlerWithIncrementalSupport::createChunk);
+
+
+        Publisher<String> resultPublisher = Flux.mergeSequential(firstBoundayPublisher, initialResponse, delayedResponses);
+
+        return ServerResponse.ok()
+                .header("content-type", "multipart/mixed; boundary=\"" + BOUNDARY_CHARACTERS + "\"")
+                // TODO: The 'transfer-encoding', 'connection' and 'keep-alive' headers should not be present on HTTP/2 connections
+                // TODO: see https://datatracker.ietf.org/doc/html/rfc9113#name-connection-specific-header-
+                .header("transfer-encoding", "chunked")
+                .header("connection", "keep-alive")
+                // 5 was chosen as the timeout value because is what Apollo Server uses
+                .header("keep-alive", "timeout=5")
+                .body(resultPublisher, String.class);
+    }
+
+    /**
+     * Creates a chunk containing the data.
+     * <p>
+     * Example of a response containing 2 chunks:
+     * <pre>
+     * ---                                                                                      # -> chunk boundary
+     * content-type: application/json; charset=utf-8                                            # -> chunk headers
+     *
+     * {"hasNext":true,"data":{"post":{"id":"1001"}}}                                           # -> chunk data
+     * ---                                                                                      # |
+     * content-type: application/json; charset=utf-8                                            # | another
+     *                                                                                          # | chunk
+     * {"hasNext":false,"incremental":[{"path":["post"],"data":{"text":"The full text"}}]}      # |
+     * -----                                                                                    # -> termination boundary
+     * </pre>
+     *
+     * @param data the data
+     *
+     * @return The chunk
+     */
+    private static Mono<String> createChunk(Map<String, Object> data) {
+        final String dataString;
+        try {
+            dataString = objectMapper.writeValueAsString(data);
+        } catch (JsonProcessingException e) {
+            return Mono.error(e);
+        }
+
+        String chunkText =
+                LINE_BREAK +
+                CHUNK_HEADERS +
+                LINE_BREAK +
+                LINE_BREAK +
+                dataString +
+                        LINE_BREAK +
+                        (isLastChunk(data) ? CHUNK_BOUNDARY : TERMINATION_BOUNDARY);
+
+        return Mono.just(chunkText);
+    }
+
+    private static boolean isLastChunk(Map<String, Object> data) {
+        return Optional.ofNullable(data.get("hasNext"))
+                .map(x -> Boolean.valueOf(x.toString()))
+                .orElseThrow(() -> new IllegalStateException("'hasNext' field is missing in incremental data payload. " +
+                        "Something has probably gone wrong in the execution of the query in graphql-java."));
     }
 
 }
