@@ -1,3 +1,7 @@
+This is an example GraphQL backend service that has support for the `@defer` directive. 
+Please notice that this service uses experimental graphql-java APIs, and `@defer` support in graphql-java is 
+still under very active development.
+
 
 ## Apollo Sandbox 
 
