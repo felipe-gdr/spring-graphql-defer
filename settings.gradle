@@ -6,4 +6,4 @@ pluginManagement {
 		maven { url 'https://repo.spring.io/snapshot' }
 	}
 }
-rootProject.name = 'spring-graphql-experiments'
+rootProject.name = 'spring-graphql-defer'
