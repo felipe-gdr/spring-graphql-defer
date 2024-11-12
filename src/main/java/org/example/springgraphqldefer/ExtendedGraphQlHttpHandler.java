@@ -42,8 +42,10 @@ public class ExtendedGraphQlHttpHandler extends GraphQlHttpHandler {
 				Flux.from(result.getIncrementalItemPublisher()).map(DelayedIncrementalPartialResult::toSpecification);
 
 		Flux<DataBuffer> dataBufferFlux =
-				Mono.just(result.toSpecification()).concatWith(resultMapFlux)
+				Mono.just(result.toSpecification())
+						.concatWith(resultMapFlux)
 						.flatMapIterable(this::encodeResultMap)
+						.startWith(toDataBuffer("---"))
 						.concatWithValues(toDataBuffer("--"));
 
 		return ServerResponse.ok()
